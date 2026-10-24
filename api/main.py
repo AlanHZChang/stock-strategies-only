@@ -39,7 +39,7 @@ from stock_strategies import loader
 from stock_strategies.market import get_market_state
 from stock_strategies.sheet import read_watchlist
 
-from api.services.ai_generator import generate_strategy_with_ai
+from api.services.ai_generator import AIGenerationError, generate_strategy_with_ai
 from api.services.runs import RunBusy, RunManager
 
 app = FastAPI(title="Stock Strategies API", version="1.1.0")
@@ -139,6 +139,8 @@ def generate_strategy(payload: AIGenerateIn):
     try:
         strategy = generate_strategy_with_ai(payload.prompt, name=payload.name)
         return strategy
+    except AIGenerationError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, f"AI 生策略失敗：{e}")

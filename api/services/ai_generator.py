@@ -7,11 +7,23 @@ import os
 import re
 from typing import Optional
 
+from google.api_core import exceptions as google_errors
+from requests.exceptions import Timeout as RequestsTimeout
+
 from stock_strategies import loader
 
 
 # 預設用 Gemini 2.5 Flash；可用 GEMINI_MODEL 環境變數覆寫
 DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GENERATION_TIMEOUT_SECONDS = 90
+
+
+class AIGenerationError(RuntimeError):
+    """可由 API 回傳給使用者的 AI 服務錯誤。"""
+
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
 
 
 SYSTEM_PROMPT = """你是台股量化選股策略設計師。使用者會用自然語言描述他想要的選股風格，
@@ -75,21 +87,21 @@ def generate_strategy_with_ai(user_prompt: str, name: Optional[str] = None) -> d
     """
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        raise RuntimeError("未設定 GEMINI_API_KEY 環境變數")
+        raise AIGenerationError(503, "未設定 GEMINI_API_KEY，請在專案 .env 設定後重新啟動後端")
 
     try:
         import google.generativeai as genai
     except ImportError as e:
-        raise RuntimeError(
-            "缺少 google-generativeai 套件，請 `uv add google-generativeai`"
+        raise AIGenerationError(
+            503, "缺少 AI 服務套件，請執行 uv sync 後重新啟動後端"
         ) from e
 
-    genai.configure(api_key=api_key)
+    # REST 能直接保留 Google HTTP 錯誤（例如 402），避免 gRPC 連線長時間等待。
+    genai.configure(api_key=api_key, transport="rest")
     model = genai.GenerativeModel(
         DEFAULT_MODEL,
         system_instruction=SYSTEM_PROMPT,
         generation_config={
-            "temperature": 0.4,
             "response_mime_type": "application/json",
         },
     )
@@ -101,14 +113,34 @@ def generate_strategy_with_ai(user_prompt: str, name: Optional[str] = None) -> d
     if name:
         full_prompt += f" 策略名稱請使用：「{name}」。"
 
-    resp = model.generate_content(full_prompt)
-    text = getattr(resp, "text", None) or ""
-    data = _extract_json(text)
+    try:
+        # SDK 預設期限為 600 秒，且會重試；必須早於前端代理期限回應。
+        resp = model.generate_content(
+            full_prompt,
+            request_options={"timeout": GENERATION_TIMEOUT_SECONDS, "retry": None},
+        )
+    except (google_errors.DeadlineExceeded, RequestsTimeout, TimeoutError) as exc:
+        raise AIGenerationError(504, "AI 生成超過 90 秒，請稍後重試或改用回應較快的 GEMINI_MODEL") from exc
+    except google_errors.ResourceExhausted as exc:
+        raise AIGenerationError(429, "Gemini API 額度不足或請求過於頻繁，請檢查配額後重試") from exc
+    except (google_errors.Unauthenticated, google_errors.PermissionDenied) as exc:
+        raise AIGenerationError(503, "Gemini API 授權失敗，請檢查 GEMINI_API_KEY 與 API 使用權限") from exc
+    except google_errors.NotFound as exc:
+        raise AIGenerationError(503, "Gemini 模型無法使用，請檢查 GEMINI_MODEL 與模型使用權限") from exc
+    except google_errors.GoogleAPICallError as exc:
+        if exc.code == 402:
+            raise AIGenerationError(402, "Gemini 專案的預付額度已用完，請到 Google AI Studio 檢查帳務與額度後重試") from exc
+        raise AIGenerationError(502, "Gemini API 暫時無法完成生成，請檢查模型設定或稍後重試") from exc
 
-    # 強制 source = ai，並讓 validator 補齊缺漏
-    data["source"] = "ai"
-    if name and not data.get("name"):
-        data["name"] = name
+    try:
+        text = getattr(resp, "text", None) or ""
+        data = _extract_json(text)
 
-    clean = loader.validate_strategy(data)
-    return clean
+        # 強制 source = ai，並讓 validator 補齊缺漏。
+        data["source"] = "ai"
+        if name and not data.get("name"):
+            data["name"] = name
+
+        return loader.validate_strategy(data)
+    except (ValueError, TypeError) as exc:
+        raise AIGenerationError(502, "AI 未回傳有效的策略參數，請調整描述後重新生成") from exc
