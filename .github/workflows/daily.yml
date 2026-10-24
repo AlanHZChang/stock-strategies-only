@@ -30,4 +30,15 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
+          # 策略參數使用 Repository Variables；未設定時沿用預設值。
+          EPS_THRESHOLD: ${{ vars.EPS_THRESHOLD || '5.0' }}
+          ROE_THRESHOLD: ${{ vars.ROE_THRESHOLD || '15.0' }}
+          BACKTEST_YEARS: ${{ vars.BACKTEST_YEARS || '3' }}
+          HOLD_DAYS: ${{ vars.HOLD_DAYS || '20' }}
+          TARGET_RETURN: ${{ vars.TARGET_RETURN || '0.10' }}
+          STOP_LOSS: ${{ vars.STOP_LOSS || '0.08' }}
+          MIN_TECH_SCORE_FOR_SIGNAL: ${{ vars.MIN_TECH_SCORE_FOR_SIGNAL || '60' }}
+          MIN_TOTAL_SCORE_FOR_BUY: ${{ vars.MIN_TOTAL_SCORE_FOR_BUY || '65' }}
+          NIGHT_GAP_BIG: ${{ vars.NIGHT_GAP_BIG || '1.5' }}
+          NIGHT_GAP_SMALL: ${{ vars.NIGHT_GAP_SMALL || '0.5' }}
         run: uv run python main.py

@@ -222,7 +222,7 @@ uv run python premarket.py
 
 排程已內建在 `.github/workflows/premarket.yml`。設定好 GitHub Actions secrets 後，到 **Actions** → **Premarket Night Session** → **Run workflow** 手動測一次；成功後，每個交易日**台灣時間 08:00**（夜盤 05:00 收完、開盤 09:00 前）自動推播。週一會自動抓到上週五的夜盤；若 08:00 夜盤資料還沒更新，會取最近一筆並標明資料日期。
 
-> 微調門檻：改 `stock_strategies/config.py` 的 `night_gap_big`（大漲/大跌界線，預設 1.5%）與 `night_gap_small`（平盤界線，預設 0.5%）。
+> 微調門檻：改 `.env` 的 `NIGHT_GAP_BIG`（大漲/大跌界線，預設 1.5%）與 `NIGHT_GAP_SMALL`（平盤界線，預設 0.5%），並重新啟動程式。
 
 ---
 
@@ -479,20 +479,24 @@ ROE > 15%   # 股東權益報酬率
 
 ### 調整參數
 
-修改 `stock_strategies/config.py` 裡的 `CONFIG`：
+修改專案根目錄 `.env` 裡的參數（完整範例見 `.env.example`）：
 
-```python
-CONFIG = {
-    "eps_threshold": 5.0,       # EPS 門檻，降低可納入更多股票
-    "roe_threshold": 15.0,      # ROE 門檻
-    "backtest_years": 3,        # 回測年數
-    "hold_days": 20,            # 持有天數（交易日）
-    "target_return": 0.10,      # 停利 10%
-    "stop_loss": 0.08,          # 停損 8%
-    "min_tech_score_for_signal": 60,  # 回測取樣的技術分門檻
-    "min_total_score_for_buy": 65,    # BUY 的綜合分門檻
-}
+```dotenv
+EPS_THRESHOLD=5.0
+ROE_THRESHOLD=15.0
+BACKTEST_YEARS=3
+HOLD_DAYS=20
+TARGET_RETURN=0.10
+STOP_LOSS=0.08
+MIN_TECH_SCORE_FOR_SIGNAL=60
+MIN_TOTAL_SCORE_FOR_BUY=65
+NIGHT_GAP_BIG=1.5
+NIGHT_GAP_SMALL=0.5
 ```
+
+設定在啟動時載入，修改後需重新啟動。系統環境變數優先於 `.env`；未設定時使用原本預設值。Web 個別策略 JSON 的 `params` 仍可覆寫對應的預設參數。
+
+GitHub Actions 的 `daily.yml` 與 `premarket.yml` 使用上述同名的 **Repository Variables**：到 **Settings → Secrets and variables → Actions → Variables** 新增即可。未設定或留空時沿用上述預設值；API 金鑰等原有五項憑證仍放在 **Secrets**。
 
 ### 改寫策略的幾個方向
 
