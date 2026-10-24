@@ -35,6 +35,10 @@ CONFIG = {
     "hold_days": int(os.environ.get("HOLD_DAYS", "20")),
     "target_return": float(os.environ.get("TARGET_RETURN", "0.10")),
     "stop_loss": float(os.environ.get("STOP_LOSS", "0.08")),
+    # 綜合分權重（小數比例；evaluate 會依總和正規化）
+    "weight_fundamental": float(os.environ.get("WEIGHT_FUNDAMENTAL", "0.3")),
+    "weight_technical": float(os.environ.get("WEIGHT_TECHNICAL", "0.3")),
+    "weight_backtest": float(os.environ.get("WEIGHT_BACKTEST", "0.4")),
     "min_tech_score_for_signal": int(os.environ.get("MIN_TECH_SCORE_FOR_SIGNAL", "60")),
     "min_total_score_for_buy": int(os.environ.get("MIN_TOTAL_SCORE_FOR_BUY", "65")),
     # 夜盤開盤方向分類門檻（漲跌幅 %）

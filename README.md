@@ -488,6 +488,9 @@ BACKTEST_YEARS=3
 HOLD_DAYS=20
 TARGET_RETURN=0.10
 STOP_LOSS=0.08
+WEIGHT_FUNDAMENTAL=0.3
+WEIGHT_TECHNICAL=0.3
+WEIGHT_BACKTEST=0.4
 MIN_TECH_SCORE_FOR_SIGNAL=60
 MIN_TOTAL_SCORE_FOR_BUY=65
 NIGHT_GAP_BIG=1.5
@@ -517,16 +520,15 @@ if pd.notna(row.get("rsi")) and 30 < row["rsi"] < 70:
 
 **調整評分權重**
 
-```python
-# stock_strategies/evaluate.py 裡的綜合分公式
-signal_score = round(
-    0.3 * fund_score +   # 基本面 30%
-    0.3 * tech_score +   # 技術面 30%
-    0.4 * bt_score,      # 回測 40%（目前權重最高）
-    1
-)
-# 想更重視技術面？改成 0.2 / 0.5 / 0.3
+修改 `.env` 的三項權重（使用小數比例，建議合計為 1.0），例如更重視技術面：
+
+```dotenv
+WEIGHT_FUNDAMENTAL=0.2
+WEIGHT_TECHNICAL=0.5
+WEIGHT_BACKTEST=0.3
 ```
+
+`evaluate.py` 會依權重總和正規化後計算綜合分。未設定時沿用基本面 30%、技術面 30%、回測 40%；Web 策略若在 JSON 中明確設定權重，則優先使用該策略的值。GitHub 排程請在 Repository Variables 設定相同的三個變數。
 
 **週期股策略**
 

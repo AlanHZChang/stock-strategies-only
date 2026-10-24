@@ -37,6 +37,9 @@ jobs:
           HOLD_DAYS: ${{ vars.HOLD_DAYS || '20' }}
           TARGET_RETURN: ${{ vars.TARGET_RETURN || '0.10' }}
           STOP_LOSS: ${{ vars.STOP_LOSS || '0.08' }}
+          WEIGHT_FUNDAMENTAL: ${{ vars.WEIGHT_FUNDAMENTAL || '0.3' }}
+          WEIGHT_TECHNICAL: ${{ vars.WEIGHT_TECHNICAL || '0.3' }}
+          WEIGHT_BACKTEST: ${{ vars.WEIGHT_BACKTEST || '0.4' }}
           MIN_TECH_SCORE_FOR_SIGNAL: ${{ vars.MIN_TECH_SCORE_FOR_SIGNAL || '60' }}
           MIN_TOTAL_SCORE_FOR_BUY: ${{ vars.MIN_TOTAL_SCORE_FOR_BUY || '65' }}
           NIGHT_GAP_BIG: ${{ vars.NIGHT_GAP_BIG || '1.5' }}

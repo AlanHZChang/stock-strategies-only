@@ -15,6 +15,9 @@ DEFAULTS = {
     "hold_days": 20,
     "target_return": 0.10,
     "stop_loss": 0.08,
+    "weight_fundamental": 0.3,
+    "weight_technical": 0.3,
+    "weight_backtest": 0.4,
     "min_tech_score_for_signal": 60,
     "min_total_score_for_buy": 65,
     "night_gap_big": 1.5,
@@ -33,6 +36,7 @@ def test_config_defaults_and_dotenv(tmp_path, monkeypatch, use_dotenv):
             "eps_threshold": 7.5, "roe_threshold": 18.0,
             "backtest_years": 5, "hold_days": 10,
             "target_return": 0.15, "stop_loss": 0.05,
+            "weight_fundamental": 0.2, "weight_technical": 0.5, "weight_backtest": 0.3,
             "min_tech_score_for_signal": 70, "min_total_score_for_buy": 75,
             "night_gap_big": 2.0, "night_gap_small": 0.8,
         }
@@ -53,3 +57,17 @@ def test_config_defaults_and_dotenv(tmp_path, monkeypatch, use_dotenv):
     assert actual == expected
     for key, value in actual.items():
         assert type(value) is type(DEFAULTS[key])
+
+    # 確認環境設定能一路傳到 evaluate 使用的 merge_params，策略仍可覆寫。
+    from stock_strategies import config
+
+    with patch.dict(config.CONFIG, actual):
+        loader = runpy.run_path(
+            str(config_path.with_name("loader.py")),
+            run_name="stock_strategies._config_test_loader",
+        )
+    for key in ("weight_fundamental", "weight_technical", "weight_backtest"):
+        assert loader["merge_params"](None)[key] == expected[key]
+        assert loader["param_defaults"]()[key] == expected[key]
+    overridden = loader["merge_params"]({"params": {"weight_technical": 0.8}})
+    assert overridden["weight_technical"] == 0.8
