@@ -66,3 +66,40 @@ def test_job_http_lifecycle_and_shared_admission_control(client, monkeypatch):
     finished = client.get(f"/api/runs/{job_id}").json()
     assert finished["status"] == "cancelled"
     assert finished["result"]["summary"]["total"] == 0
+
+
+@pytest.mark.parametrize("path", ["/api/run", "/api/runs"])
+def test_screening_results_with_numpy_fundamentals_are_json_serializable(client, monkeypatch, path):
+    import importlib
+    import numpy as np
+    import api.main as module
+    from api.services import runs as services
+    from tests.conftest import make_price_df
+
+    evaluate_module = importlib.import_module("stock_strategies.evaluate")
+    monkeypatch.setattr(services, "read_watchlist", lambda: [{"stock_id": "2330", "name": "test"}])
+    monkeypatch.setattr(services, "get_market_state", lambda _: {"bullish": True, "note": "test"})
+    monkeypatch.setattr(evaluate_module, "get_fundamental", lambda _: {
+        "eps": {2023: np.float64(8), 2024: np.float64(9)},
+        "roe": {2023: np.float64(20), 2024: np.float64(21)},
+    })
+    monkeypatch.setattr(evaluate_module, "get_price_history", lambda *_: make_price_df())
+    monkeypatch.setattr(evaluate_module, "backtest", lambda *_: {"winrate": 0.6, "samples": 10})
+    store = RunManager()
+    monkeypatch.setattr(module, "runs", store)
+    client.post("/api/strategies", json={"id": "numpy-test", "name": "test"})
+    try:
+        response = client.post(path, json={"strategy_id": "numpy-test", "limit": 1})
+        assert response.status_code == (202 if path == "/api/runs" else 200)
+        if path == "/api/runs":
+            store.shutdown()
+            response = client.get(f"/api/runs/{response.json()['id']}")
+            assert response.status_code == 200
+            assert response.json()["status"] == "completed"
+            result = response.json()["result"]
+        else:
+            result = response.json()
+    finally:
+        store.shutdown()
+    assert result["summary"]["error"] == 0
+    assert result["results"][0]["components"]["fundamental_pass"] is True

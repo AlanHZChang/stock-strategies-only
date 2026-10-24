@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "next": "15.5.26",
+    "next": "^15.5.28",
     "react": "19.0.8",
     "react-dom": "19.0.8"
   },
@@ -23,9 +23,9 @@
     "autoprefixer": "^10.4.20",
     "jsdom": "29.1.1",
     "postcss": "8.5.28",
-    "tailwindcss": "^3.4.15",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5.6.3",
-    "vitest": "5.0.2"
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "next": {
