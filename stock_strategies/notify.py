@@ -5,7 +5,8 @@ from datetime import datetime
 import numpy as np
 import requests
 
-from .config import CONFIG, TELEGRAM_API
+from .config import TELEGRAM_API
+from .loader import merge_params
 
 
 def send_telegram(text: str):
@@ -30,8 +31,9 @@ def _trend_emoji(chg: float) -> str:
     return "💥"
 
 
-def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
+def _format_stock_detail(s: dict, show_trend: bool = True, params: dict | None = None) -> list[str]:
     """格式化單檔股票的詳細資訊"""
+    params = merge_params(None) if params is None else params
     c = s.get("components", {})
     t = s.get("trend", {})
     lines = []
@@ -56,8 +58,8 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
         f"📌 *明日開盤進場* | 參考價 {s['entry_price']}"
     )
     lines.append(
-        f"停損 {s['stop_loss_price']} (-{CONFIG['stop_loss']*100:.0f}%) / "
-        f"目標 {s['target_price']} (+{CONFIG['target_return']*100:.0f}%)"
+        f"停損 {s['stop_loss_price']} (-{params['stop_loss']*100:g}%) / "
+        f"目標 {s['target_price']} (+{params['target_return']*100:g}%)"
     )
     lines.append(
         f"風報比 1:{s['risk_reward_ratio']} | 建議部位 {s['position_size_pct']}%"
@@ -72,19 +74,45 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
     return lines
 
 
-def _explain_why(s: dict) -> str:
+def _explain_why(s: dict, params: dict | None = None) -> str:
     """解釋為什麼是 BUY / WATCH / SKIP"""
+    params = merge_params(None) if params is None else params
     c = s.get("components", {})
     reasons = []
-    if not c.get("fundamental_pass"):
-        reasons.append("基本面未達標(EPS>5,ROE>15)")
-    if c.get("tech_score", 0) < 50:
-        reasons.append(f"技術分僅{c.get('tech_score', 0)}(<50)")
-    if s.get("signal_score", 0) < 65:
-        reasons.append(f"綜合分{s.get('signal_score', 0)}(<65)")
+    if params["fundamental_pass_required"] and not c.get("fundamental_pass"):
+        reasons.append(f"基本面未達標(EPS>{params['eps_threshold']:g},ROE>{params['roe_threshold']:g}%)")
+    if c.get("tech_score", 0) < params["min_tech_score_for_buy"]:
+        reasons.append(f"技術分僅{c.get('tech_score', 0)}(<{params['min_tech_score_for_buy']:g})")
+    if s.get("signal_score", 0) < params["min_total_score_for_buy"]:
+        reasons.append(f"綜合分{s.get('signal_score', 0)}(<{params['min_total_score_for_buy']:g})")
     if not reasons:
         return "所有條件皆達標"
     return " / ".join(reasons)
+
+
+def _format_strategy_rules(params: dict) -> str:
+    """與 evaluate 共用參數；權重依相同公式正規化後顯示。"""
+    weights = [params[key] for key in ("weight_fundamental", "weight_technical", "weight_backtest")]
+    total_weight = sum(weights)
+    percentages = [weight / total_weight * 100 if total_weight > 0 else weight * 100 for weight in weights]
+    enabled = [label for key, label in (
+        ("use_ma_alignment", "均線"), ("use_bollinger_bounce", "布林"),
+        ("use_kd_golden_cross", "KD"), ("use_macd_bullish", "MACD"),
+    ) if params[key]]
+    technical = "/".join(enabled) if enabled else "四項訊號皆關閉"
+    if params["use_volume_patterns"]:
+        technical += ";量價加減分"
+    fund_gate = "基本面通過" if params["fundamental_pass_required"] else "基本面不強制"
+    return (
+        f"基本面(EPS>{params['eps_threshold']:g},ROE>{params['roe_threshold']:g}%) + "
+        f"技術面({technical}) + {params['backtest_years']}年回測\n"
+        f"綜合 = 基本面{percentages[0]:g}% + 技術{percentages[1]:g}% + 回測{percentages[2]:g}%\n"
+        f"BUY≥{params['min_total_score_for_buy']:g}({fund_gate}、技術≥{params['min_tech_score_for_buy']:g}) "
+        "| WATCH≥50(未達BUY時)\n"
+        f"回測訊號：技術≥{params['min_tech_score_for_signal']:g}\n"
+        f"停損{params['stop_loss']*100:g}% / 停利{params['target_return']*100:g}% / "
+        f"持有{params['hold_days']}交易日"
+    )
 
 
 def _sector_summary(signals: list[dict], watchlist: list[dict]) -> list[str]:
@@ -147,8 +175,10 @@ def format_messages(
     watchlist: list[dict] = None,
     market: dict = None,
     night_note: str = None,
+    strategy: dict | None = None,
 ) -> list[str]:
-    """產生多則 Telegram 訊息"""
+    """產生多則 Telegram 訊息；未指定策略時與 evaluate 一樣使用 .env 預設參數。"""
+    params = merge_params(strategy)
     buys = [s for s in signals if s.get("action") == "BUY"]
     watches = [s for s in signals if s.get("action") == "WATCH"]
     skips = [s for s in signals if s.get("action") in ("SKIP", "ERROR")]
@@ -191,12 +221,7 @@ def format_messages(
         msg1.append("")
 
     msg1.append("📋 *策略規則*")
-    msg1.append(
-        "基本面(EPS>5,ROE>15) + 技術面(均線/布林/KD/MACD) + 3年回測\n"
-        f"綜合 = 基本面30% + 技術30% + 回測40%\n"
-        f"BUY≥65(三關全過) | WATCH≥50\n"
-        f"停損{CONFIG['stop_loss']*100:.0f}% / 停利{CONFIG['target_return']*100:.0f}% / 持有{CONFIG['hold_days']}日"
-    )
+    msg1.append(_format_strategy_rules(params))
     messages.append("\n".join(msg1))
 
     # === 第二則：BUY 詳細 ===
@@ -205,12 +230,15 @@ def format_messages(
         msg2.append(f"🟢 *BUY — 建議進場 ({len(buys)})*")
         msg2.append("")
         for s in buys:
-            msg2.extend(_format_stock_detail(s))
-            msg2.append(f"💡 為何買: {_explain_why(s)}")
+            msg2.extend(_format_stock_detail(s, params=params))
+            msg2.append(f"💡 為何買: {_explain_why(s, params)}")
             msg2.append("")
     else:
         msg2.append("🟢 *BUY: 今日無符合全部條件的標的*")
-        msg2.append("（需基本面+技術面+回測三關全過）")
+        msg2.append(
+            f"（需綜合≥{params['min_total_score_for_buy']:g}、技術≥{params['min_tech_score_for_buy']:g}"
+            + ("、基本面通過）" if params["fundamental_pass_required"] else "；基本面不強制）")
+        )
         msg2.append("")
 
     if watches:
@@ -219,8 +247,8 @@ def format_messages(
         msg2.append(f"🟡 *WATCH — 接近訊號 TOP {len(top_watches)}*")
         msg2.append("")
         for s in top_watches:
-            msg2.extend(_format_stock_detail(s))
-            msg2.append(f"❓ 差在: {_explain_why(s)}")
+            msg2.extend(_format_stock_detail(s, params=params))
+            msg2.append(f"❓ 差在: {_explain_why(s, params)}")
             msg2.append("")
 
         if rest_watches:

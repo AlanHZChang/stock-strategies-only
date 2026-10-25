@@ -71,3 +71,23 @@ def test_config_defaults_and_dotenv(tmp_path, monkeypatch, use_dotenv):
         assert loader["param_defaults"]()[key] == expected[key]
     overridden = loader["merge_params"]({"params": {"weight_technical": 0.8}})
     assert overridden["weight_technical"] == 0.8
+
+    # .env 設定也必須顯示於預設通知，不需另外傳入 strategy。
+    from stock_strategies import loader as loader_module
+
+    with patch.object(loader_module, "merge_params", loader["merge_params"]):
+        notify = runpy.run_path(
+            str(config_path.with_name("notify.py")),
+            run_name="stock_strategies._config_test_notify",
+        )
+    message = notify["format_messages"]([])[0]
+    assert f"EPS>{expected['eps_threshold']:g},ROE>{expected['roe_threshold']:g}%" in message
+    assert f"{expected['backtest_years']}年回測" in message
+    assert f"BUY≥{expected['min_total_score_for_buy']:g}" in message
+    assert f"回測訊號：技術≥{expected['min_tech_score_for_signal']:g}" in message
+    assert f"停損{expected['stop_loss']*100:g}%" in message
+    assert f"停利{expected['target_return']*100:g}%" in message
+    assert f"持有{expected['hold_days']}交易日" in message
+    total_weight = sum(expected[key] for key in ("weight_fundamental", "weight_technical", "weight_backtest"))
+    for key, label in (("weight_fundamental", "基本面"), ("weight_technical", "技術"), ("weight_backtest", "回測")):
+        assert f"{label}{expected[key] / total_weight * 100:g}%" in message
