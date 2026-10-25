@@ -307,6 +307,7 @@ def format_messages(
         msg3.append("• 只做高勝率、風報比好的機會")
     msg3.append("")
     msg3.append("_以上為系統自動分析，僅供參考，投資決策請自行判斷_")
+    msg3.append("ref : https://rank355297-mark.github.io/stock_chips/")
     messages.append("\n".join(msg3))
 
     # === 第四則：量價深度解析 (V3.1) ===

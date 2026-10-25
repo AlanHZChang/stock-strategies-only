@@ -4,11 +4,28 @@ Next.js + Tailwind 前端，後端是 `api/` 下的 FastAPI。
 
 ## 開發啟動
 
+Windows 可直接雙擊專案根目錄的 `start-dashboard.cmd`。它會呼叫 `start-dashboard.ps1`，檢查 `uv`、Node.js／npm，依鎖定檔安裝所需套件，在背景啟動後端（8000）與前端（3000），就緒後開啟瀏覽器。首次執行需能連線下載套件；須事先依 `.env.example` 設定專案 `.env`。
+
+已正常運行的服務會沿用；埠號被其他或異常服務占用時會顯示錯誤。Log 位於 `.cache/dashboard/` 的 `backend.log`、`backend.error.log`、`frontend.log` 與 `frontend.error.log`。
+
+```powershell
+# 只檢查工具與埠號，不啟動服務
+.\start-dashboard.cmd -CheckOnly
+# 啟動但不開啟瀏覽器
+.\start-dashboard.cmd -NoBrowser
+# 停止由此啟動檔建立的前後端；沿用的既有服務不會停止
+.\start-dashboard.cmd -Stop
+```
+
+上述指令在專案根目錄執行。`.ps1` 是實際啟動程式；`.cmd` 供 Windows 雙擊使用，執行原則只套用這次啟動，不修改系統設定。也可直接執行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\start-dashboard.ps1`。
+
+手動啟動方式：
+
 ```bash
 # 1. 後端（在專案根目錄）
 uv sync                              # 安裝新增的 fastapi / pydantic / google-generativeai
-# --reload-include 只看 Python，避免存策略 JSON 時 server 重啟把 /api/run 切斷
-uv run uvicorn api.main:app --reload --reload-include '*.py' --port 8000
+# --reload 預設只監看 Python；以 python -m 啟動避免 Windows 萬用字元展開問題
+uv run python -m uvicorn api.main:app --reload --port 8000
 
 # 2. 前端（另開一個 terminal，進 web/）
 cd web

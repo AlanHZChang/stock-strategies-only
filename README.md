@@ -72,10 +72,12 @@
 
 ### 啟動方式（兩個 terminal）
 
+Windows 可直接雙擊根目錄的 [`start-dashboard.cmd`](start-dashboard.cmd)，由 [`start-dashboard.ps1`](start-dashboard.ps1) 啟動前後端並開啟 Dashboard。詳細檢查、log 與停止方式見 [`web/README.md`](web/README.md#開發啟動)。
+
 ```bash
 # Terminal 1 — 後端（專案根目錄）
 uv sync
-uv run uvicorn api.main:app --reload --reload-include '*.py' --port 8000
+uv run python -m uvicorn api.main:app --reload --port 8000
 
 # Terminal 2 — 前端
 cd web && npm install && npm run dev
