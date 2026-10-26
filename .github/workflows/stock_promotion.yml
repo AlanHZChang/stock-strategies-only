@@ -3,7 +3,7 @@ name: Stock Promotion via TG
 on:
   schedule:
     # 台灣時間 08:00 = UTC 00:00（夜盤 05:00 收完、開盤 09:00 前）
-    - cron: '0 14 * * 1'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
