@@ -29,6 +29,13 @@ def read_watchlist() -> list[dict]:
     return enabled
 
 
+SIGNAL_HEADERS = [
+    "date", "stock_id", "name", "action", "signal_score",
+    "entry_price", "stop_loss_price", "target_price", "rr_ratio", "position_pct",
+    "winrate", "samples", "tech_signals", "risk_notes", "chips_json",
+]
+
+
 def append_signals(signals: list[dict]):
     """把結果寫回 Signals 分頁"""
     if not signals:
@@ -38,32 +45,29 @@ def append_signals(signals: list[dict]):
         ws = sh.worksheet("Signals")
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title="Signals", rows=1000, cols=20)
-        ws.append_row([
-            "date", "stock_id", "name", "action", "signal_score",
-            "entry_price", "stop_loss_price", "target_price",
-            "rr_ratio", "position_pct", "winrate", "samples",
-            "tech_signals", "risk_notes"
-        ])
+    headers = ws.row_values(1)
+    if not headers:
+        headers = list(SIGNAL_HEADERS)
+        ws.append_row(headers)
+    else:
+        missing = [header for header in SIGNAL_HEADERS if header not in headers]
+        if missing:
+            headers += missing
+            if len(headers) > ws.col_count:
+                ws.add_cols(len(headers) - ws.col_count)
+            ws.update(values=[headers], range_name="A1")
 
     rows = []
     for s in signals:
         c = s.get("components", {})
-        rows.append([
-            s.get("date", ""),
-            s.get("stock_id", ""),
-            s.get("name", ""),
-            s.get("action", ""),
-            s.get("signal_score", ""),
-            s.get("entry_price", ""),
-            s.get("stop_loss_price", ""),
-            s.get("target_price", ""),
-            s.get("risk_reward_ratio", ""),
-            s.get("position_size_pct", ""),
-            c.get("backtest_winrate", ""),
-            c.get("backtest_samples", ""),
-            ", ".join(c.get("tech_signals", [])),
-            " / ".join(s.get("risk_notes", [])),
-        ])
+        values = {key: s.get(key, "") for key in ("date", "stock_id", "name", "action", "signal_score",
+                  "entry_price", "stop_loss_price", "target_price")}
+        values.update({"rr_ratio": s.get("risk_reward_ratio", ""), "position_pct": s.get("position_size_pct", ""),
+                       "winrate": c.get("backtest_winrate", ""), "samples": c.get("backtest_samples", ""),
+                       "tech_signals": ", ".join(c.get("tech_signals", [])),
+                       "risk_notes": " / ".join(s.get("risk_notes", [])),
+                       "chips_json": json.dumps(c["chips"], ensure_ascii=False, allow_nan=False) if c.get("chips") else ""})
+        rows.append([values.get(header, "") for header in headers])
     ws.append_rows(rows)
 
 
@@ -153,7 +157,15 @@ def read_latest_signals(limit: int = 50) -> list[dict]:
     rows = ws.get_all_records()
     if not rows:
         return []
-    return rows[-limit:][::-1]  # 最新的在最前面
+    latest = rows[-limit:][::-1]  # 最新的在最前面
+    for row in latest:
+        try:
+            chips = json.loads(row.get("chips_json") or "null")
+            if isinstance(chips, dict):
+                row["chips"] = chips
+        except (ValueError, TypeError):
+            pass  # 舊版或損毀的摘要仍可顯示原有訊號，盤前再補抓。
+    return latest
 
 
 PERFORMANCE_HEADERS = [

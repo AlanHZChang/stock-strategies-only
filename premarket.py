@@ -8,6 +8,7 @@
 
 import os
 import sys
+import time
 from datetime import datetime
 
 try:
@@ -18,7 +19,9 @@ except ImportError:
 
 from stock_strategies.night_session import get_night_session
 from stock_strategies.sheet import read_latest_signals
-from stock_strategies.notify import send_telegram, format_premarket
+from stock_strategies.notify import send_telegram, format_premarket_messages, select_premarket_signals
+from stock_strategies.evaluate import evaluate_chips
+from stock_strategies.chips import merge_chip_snapshot
 
 
 REQUIRED_ENV = [
@@ -28,6 +31,23 @@ REQUIRED_ENV = [
     "GOOGLE_SHEET_ID",
     "GOOGLE_CREDS_JSON",
 ]
+
+
+def enrich_premarket_signals(signals: list[dict], as_of: str | None = None) -> list[dict]:
+    """只更新最新 BUY/WATCH 籌碼，不改分數、動作或歷史 Sheet 紀錄。"""
+    as_of = as_of or datetime.now().strftime("%Y-%m-%d")
+    enriched = []
+    for signal in select_premarket_signals(signals):
+        row = dict(signal)
+        saved = row.get("chips") or row.get("components", {}).get("chips")
+        try:
+            fresh = evaluate_chips(str(row["stock_id"]), as_of, refresh=True)
+        except Exception:
+            fresh = {"as_of": as_of, **{name: {"status": "unavailable", "reason": "盤前更新失敗"}
+                     for name in ("institutional", "large_holders", "margin")}}
+        row["chips"] = merge_chip_snapshot(fresh, saved)
+        enriched.append(row)
+    return enriched
 
 
 def main():
@@ -55,9 +75,15 @@ def main():
         signals = []
     print(f"  → {len(signals)} 筆")
 
-    # 3. 發送 Telegram 盤前快報
+    # 3. 法人／資券晚間才更新，盤前補抓；不重跑選股或覆寫昨日訊號。
+    print("更新盤前籌碼摘要...")
+    signals = enrich_premarket_signals(signals)
+
+    # 4. 發送 Telegram 盤前快報
     print("發送 Telegram 盤前快報...")
-    send_telegram(format_premarket(night, signals))
+    for message in format_premarket_messages(night, signals):
+        send_telegram(message)
+        time.sleep(0.5)
     print("✅ 完成")
 
 

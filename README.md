@@ -7,14 +7,16 @@
 - TODO: 嚴謹回測機制
 
 > ✅ **現有版本穩定、開箱即用** — 每日選股、🌙 夜盤盤前快報、策略庫 Web UI 全部正常運作，`uv run python main.py` 直接跑即可，不需要任何額外設定。
->
+> 
 > 🏗️ **另外有一個進行中的進階升級（V3.4）** — 正在打造「多流派因子 × 持有週期 × regime 自適應」的新選股引擎（地基已完成、105 測試全綠）。**這個升級完成前，完全不影響你現在的使用**——你照用穩定版，升級好了才會無痛接上。好奇的話 → [🏗️ V3.4 章節](#️-v34進行中--多角色股市策略系統重構)
 
 ## 🌙 新功能（已上線）：夜盤盤前快報
+
 - 因為最近的夜盤台指期跌了三千多點，連帶 6/8 星期一股市也重挫——**夜盤是隔日台股盤勢的領先指標**，這版就把夜盤觀察機制做進來了。
 - 新增一支**早上 08:00 的盤前排程**：讀昨晚整段台指期夜盤，推播「今日開盤方向預判（大漲/小漲/平盤/小跌/大跌）」，並把前一天選出的 BUY/WATCH 疊上「夜盤順風🟢 / 逆風🔴」標籤。
 - 跟原本收盤後 14:30 的選股報告**互補**：晚上選股、隔天早上用夜盤校準方向。詳見 → [🌙 夜盤盤前快報](#-夜盤盤前快報詳解)
 - 這支程式還在星期天開盤前推薦過一支即使大盤被狂殺、依舊漲停的股票，也推薦了星期一可以「便宜加碼」的標的，還不錯～
+
 ---
 
 > **基本面 × 技術面 × 歷史回測** — 全自動掃描、評分、推播  
@@ -88,6 +90,7 @@ cd web && npm install && npm run dev
 原本的 `main.py` 走排程跑 default 策略，跟新 UI 完全相容。
 
 #### ⚡ 2026-09 操作與架構改善重點
+
 - **非同步短輪詢選股**：改採背景任務架構（`/api/runs` 端點），徹底解決 Next.js 代理長請求連線逾時（Socket Hang up）問題。
 - **逐檔即時進度與取消**：畫面即時顯示當前分析個股（如 `7 / 20 正在分析 2330`）與進度條，支援隨時協同取消並保留已完成結果。
 - **全新選股結果檢視**：支援 `BUY` / `WATCH` / `SKIP` / `ERROR` 標籤點擊即時篩選、股票代號/名稱搜尋、多維排序與 CSV 匯出。
@@ -102,6 +105,7 @@ cd web && npm install && npm run dev
 > 舊版策略本質是「一份扁平 20 格參數 + 固定四技術訊號」，表達力有限。這版正在做一次**地基級重構**：把策略升級成「**多流派因子 × 持有週期 × 大盤 regime 自適應**」，用**多角色 AI 專家協作**設計、用**確定性回測引擎**驗證，產出更精準的策略庫。
 
 > ### ✅ 這會影響我現在的使用嗎？完全不會。
+> 
 > `uv run python main.py` 跑的**還是原本穩定的選股邏輯**，所有現有功能（夜盤快報、策略庫、Telegram 通知）照常。V3.4 是**獨立並行開發**的新引擎——它要等全部完成、且經過充分歷史回測驗證後，才會無痛接上 `main.py`。**在那之前，你開箱即用、零影響。** 下面的內容是給想了解技術方向、或想一起貢獻的人看的 👇
 
 ### 為什麼這樣重構（舊策略「太 rough」的三個根因）
@@ -125,15 +129,15 @@ cd web && npm install && npm run dev
 
 ### 進度
 
-| 階段 | 內容 | 狀態 |
-|---|---|---|
-| **P1 資料層** | FinMind 7 dataset 的 point-in-time loader（法人／月營收／估值／融資券／外資持股／大盤指數）+ 快取限流 + `FactorContext` | ✅ 完成 |
-| **P2 因子層** | 7 流派 **29 因子**（價值3／成長3／動能4／籌碼4／營收3／反轉3／突破3 + legacy 相容6）+ registry + `build_panel` | ✅ 完成 |
-| **P3 回測引擎** | `regime_classify`（判多／盤／空）+ 分市況 `backtest_v2`（夏普／最大回撤／樣本外）+ 投組聚合 | 🔜 規劃中 |
-| **P4 策略 schema** | 分層 schema（factors 加權 + regime_overrides + period）+ v1/v2 向後相容 | 🔜 |
-| **P5 研發 workflow** | 多專家協作設計 + 回測驗證 → 產策略庫 | 🔜 |
-| **P6 固化 runtime** | `evaluate_v2` + LLM 解說員，接回 `main.py` | 🔜 |
-| **P7 前端／API** | 策略庫 v2 + AI 生成器升級 | 🔜 |
+| 階段                 | 內容                                                                                        | 狀態     |
+| ------------------ | ----------------------------------------------------------------------------------------- | ------ |
+| **P1 資料層**         | FinMind 7 dataset 的 point-in-time loader（法人／月營收／估值／融資券／外資持股／大盤指數）+ 快取限流 + `FactorContext` | ✅ 完成   |
+| **P2 因子層**         | 7 流派 **29 因子**（價值3／成長3／動能4／籌碼4／營收3／反轉3／突破3 + legacy 相容6）+ registry + `build_panel`        | ✅ 完成   |
+| **P3 回測引擎**        | `regime_classify`（判多／盤／空）+ 分市況 `backtest_v2`（夏普／最大回撤／樣本外）+ 投組聚合                           | 🔜 規劃中 |
+| **P4 策略 schema**   | 分層 schema（factors 加權 + regime_overrides + period）+ v1/v2 向後相容                             | 🔜     |
+| **P5 研發 workflow** | 多專家協作設計 + 回測驗證 → 產策略庫                                                                     | 🔜     |
+| **P6 固化 runtime**  | `evaluate_v2` + LLM 解說員，接回 `main.py`                                                      | 🔜     |
+| **P7 前端／API**      | 策略庫 v2 + AI 生成器升級                                                                         | 🔜     |
 
 > P1 + P2 共 **105 個自動化測試全綠**，所有因子無未來資訊（point-in-time）、值域 0~1、缺料統一處理。
 
@@ -166,6 +170,22 @@ print('composite =', round(compute_all_factors(ctx, fl, {})['composite'], 3))
 
 ## 🌙 夜盤盤前快報（詳解）
 
+### WATCH／BUY 籌碼摘要
+
+`evaluate()` 在 `components.chips` 計算個股籌碼摘要，收盤訊號寫入 Google Sheet `Signals` 時存為 `chips_json`。既有表格會自動附加欄位，保留原欄位順序與歷史資料。舊版沒有摘要的訊號仍可讀取，盤前會補抓。
+
+`premarket.py` 讀取最新一批 BUY／WATCH 後，只更新籌碼資料並保留原訊號與分數，訊息包含：
+
+- 各法人當日買賣超與合計、外資連買／連賣交易日數、近 5 個股交易日的各法人及合計淨額。原始單位為股，通知換算為張。
+- 千張以上級距（1,000,001 股起）的持股比例，與前一週的百分點差及相對增幅；前週為 0 或缺少前週資料時，不推算增幅。
+- 融資、融券的餘額與較前一交易日增減，單位直接採公告的張數；優先使用公告昨日餘額，避免缺日資料被當作日增減。
+
+所有欄位均標示資料日期與來源。法人五日累計與連買／連賣以個股交易日對齊，缺資料不補零；最多回看 20 個交易日，超過時標示「至少」。盤前更新最近兩日報表與集保最新週資料，共用市場報表快取並間隔請求；更新失敗時，可沿用已儲存、有日期的摘要並明確標記。盤前不覆寫歷史訊號、不重跑回測，亦不因這些摘要調整綜合分或買賣決策。完整 BUY／WATCH 清單會自動分段發送，避免 Telegram 長度限制。
+
+**公開資料來源：** `stock_strategies/public_chips.py` 直接抓取證交所 T86／MI_MARGN、櫃買中心法人／資券盤後報表，以及[集保股權分散 CSV](https://opendata.tdcc.com.tw/getOD.ashx?id=1-5)。千張大戶直接使用第 15 級持股比例，最新 CSV 只有單週時，透過[集保公開歷史查詢](https://www.tdcc.com.tw/portal/zh/smWeb/qryStock)取得前一週，無須 FinMind 付費權限。跨假日依公告所屬週比較，缺前週不拿更早資料替代。歷史週別受官方可查範圍限制；下載失敗、尚未公布或查無股票時明確顯示資料不足。
+
+公開資料存在 `.cache/public_chips/`，可用 `PUBLIC_CHIPS_CACHE_DIR` 指定路徑；不需額外金鑰。股價、基本面及其他原有資料流程仍使用 FinMind。
+
 ### 為什麼看夜盤？
 
 台指期**夜盤交易時段為 15:00 ～ 隔日 05:00**，這段時間涵蓋了歐美股市與國際消息的反應。隔天台股 09:00 開盤往往會「跳空」去貼齊夜盤的位置——所以**昨晚夜盤的漲跌，是今日台股開盤方向的領先參考**。6/8 那次台指期夜盤重挫三千多點，隔天現貨開盤就跟著大跌，就是最直接的例子。
@@ -174,27 +194,27 @@ print('composite =', round(compute_all_factors(ctx, fl, {})['composite'], 3))
 
 夜盤訊號接在**兩個地方**，定位不同：
 
-| | 14:30 收盤後選股（`main.py`） | 🌙 08:00 盤前快報（`premarket.py`） |
-|---|---|---|
-| 夜盤角色 | **情緒風控濾鏡** | **開盤方向預測** |
-| 用哪段夜盤 | 昨晚（已反映在今收）→ 風控 | 昨晚（隔日就要開盤）→ 預測 |
-| 怎麼作用 | 昨晚夜盤**大跌** → BUY 自動降 WATCH；小跌標逆風；報告標頭顯示夜盤濾鏡狀態 | 推「今日開盤方向預判」+ 把昨日 BUY/WATCH 貼順風/逆風 |
+|       | 14:30 收盤後選股（`main.py`）                        | 🌙 08:00 盤前快報（`premarket.py`）     |
+| ----- | --------------------------------------------- | --------------------------------- |
+| 夜盤角色  | **情緒風控濾鏡**                                    | **開盤方向預測**                        |
+| 用哪段夜盤 | 昨晚（已反映在今收）→ 風控                                | 昨晚（隔日就要開盤）→ 預測                    |
+| 怎麼作用  | 昨晚夜盤**大跌** → BUY 自動降 WATCH；小跌標逆風；報告標頭顯示夜盤濾鏡狀態 | 推「今日開盤方向預判」+ 把昨日 BUY/WATCH 貼順風/逆風 |
 
 > **為什麼分兩處？** `main.py` 14:30 跑時，今晚夜盤還沒開始，只能拿到「昨晚」那段——它已反映在今天收盤價，所以在 main 裡定位是**風控**（夜盤重挫 → 隔日選股轉保守），而非精準開盤預測。真正「夜盤預測今日開盤」的角色，由隔天早上 08:00、夜盤收完後跑的盤前快報負責。兩者都**不重跑個股選股**，各只多打 1 次台指期 API，省 FinMind 額度。
->
+> 
 > 註：夜盤是**大盤級**訊號，對 watchlist 每檔影響相同，若直接加進個股分數只會整體平移、不改變排名，因此設計成**門檻/濾鏡**（比照加權月線濾鏡）而非個股加分。
 
 ### 開盤方向分類
 
 讀台指期夜盤近月（FinMind `TaiwanFuturesDaily` 的 `after_market` session），用漲跌幅分五級（門檻可在 `config.py` 調）：
 
-| 夜盤漲跌幅 | 預判 | 對昨日 BUY/WATCH 的標籤 |
-|---|---|---|
-| ≥ +1.5% | 🚀 大漲 | 夜盤順風🟢（回檔承接優於追高，留意開高走低） |
-| +0.5 ~ +1.5% | 🟢 小漲 | 夜盤順風🟢 |
-| −0.5 ~ +0.5% | ⚪ 平盤 | 夜盤中性⚪（看量價表態） |
-| −1.5 ~ −0.5% | 🟠 小跌 | 夜盤逆風🔴（等止穩再進） |
-| ≤ −1.5% | 🔴 大跌 | 夜盤逆風🔴（嚴設停損／觀望） |
+| 夜盤漲跌幅        | 預判    | 對昨日 BUY/WATCH 的標籤       |
+| ------------ | ----- | ----------------------- |
+| ≥ +1.5%      | 🚀 大漲 | 夜盤順風🟢（回檔承接優於追高，留意開高走低） |
+| +0.5 ~ +1.5% | 🟢 小漲 | 夜盤順風🟢                  |
+| −0.5 ~ +0.5% | ⚪ 平盤  | 夜盤中性⚪（看量價表態）            |
+| −1.5 ~ −0.5% | 🟠 小跌 | 夜盤逆風🔴（等止穩再進）           |
+| ≤ −1.5%      | 🔴 大跌 | 夜盤逆風🔴（嚴設停損／觀望）         |
 
 ### 快報長這樣
 
@@ -304,12 +324,12 @@ Google Sheet 股票池 → 跑策略評分 → Telegram 推播 + Sheet 紀錄
 
 你需要準備四組免費的 API / 帳號：
 
-| 服務 | 用途 | 取得方式 |
-|------|------|----------|
-| [FinMind](https://finmindtrade.com/) | 台股財報 + K 線資料 | 免費註冊，拿 API token |
-| [Telegram Bot](https://t.me/BotFather) | 推播通知 | 找 @BotFather 建 bot |
-| [Google Sheet](https://sheets.google.com) | 股票池 + 訊號紀錄 | 建一張空的 Sheet |
-| [GCP Service Account](https://console.cloud.google.com/) | 程式讀寫 Sheet 的權限 | 建 SA，下載 JSON 金鑰 |
+| 服務                                                       | 用途             | 取得方式               |
+| -------------------------------------------------------- | -------------- | ------------------ |
+| [FinMind](https://finmindtrade.com/)                     | 台股財報 + K 線資料   | 免費註冊，拿 API token   |
+| [Telegram Bot](https://t.me/BotFather)                   | 推播通知           | 找 @BotFather 建 bot |
+| [Google Sheet](https://sheets.google.com)                | 股票池 + 訊號紀錄     | 建一張空的 Sheet        |
+| [GCP Service Account](https://console.cloud.google.com/) | 程式讀寫 Sheet 的權限 | 建 SA，下載 JSON 金鑰    |
 
 ### Step 1：Fork & Clone
 
@@ -324,10 +344,10 @@ cd stock-strategies-only
 建一張新的 Google Sheet，第一個分頁命名為 **`Watchlist`**，欄位如下：
 
 | stock_id | name | category | enabled |
-|----------|------|----------|---------|
-| 2330 | 台積電 | AI | TRUE |
-| 2308 | 台達電 | CPO | TRUE |
-| 2049 | 上銀 | 機器人 | TRUE |
+| -------- | ---- | -------- | ------- |
+| 2330     | 台積電  | AI       | TRUE    |
+| 2308     | 台達電  | CPO      | TRUE    |
+| 2049     | 上銀   | 機器人      | TRUE    |
 
 - `stock_id` — 台股代號
 - `category` — 自訂類股分類（用於類股強弱排名）
@@ -378,23 +398,23 @@ uv run python main.py
 
 請切到 **Secrets** 分頁，按 **New repository secret**，加入五個 secret：
 
-| Secret 名稱 | 值 |
-|---|---|
-| `FINMIND_TOKEN` | 你的 FinMind API token |
-| `TELEGRAM_BOT_TOKEN` | 你的 Telegram Bot token |
-| `TELEGRAM_CHAT_ID` | 你的 Telegram Chat ID |
-| `GOOGLE_SHEET_ID` | 你的 Google Sheet ID |
-| `GOOGLE_CREDS_JSON` | Service Account JSON **整串貼進去** |
+| Secret 名稱            | 值                              |
+| -------------------- | ------------------------------ |
+| `FINMIND_TOKEN`      | 你的 FinMind API token           |
+| `TELEGRAM_BOT_TOKEN` | 你的 Telegram Bot token          |
+| `TELEGRAM_CHAT_ID`   | 你的 Telegram Chat ID            |
+| `GOOGLE_SHEET_ID`    | 你的 Google Sheet ID             |
+| `GOOGLE_CREDS_JSON`  | Service Account JSON **整串貼進去** |
 
 > 不要把這五個值填到 **Variables**。本 repo 的 workflow 讀的是 `${{ secrets.FINMIND_TOKEN }}` 這種 `secrets.*`，如果填到 Variables，Actions 會顯示 `Missing ...` 或在執行時讀不到 token。Variables 只適合放非敏感設定，例如未來如果要自訂掃描檔數、策略名稱、debug 開關，才放那邊。
 
 本 repo 已內建三支 workflow：
 
-| Workflow | 用途 | 觸發 |
-|---|---|---|
-| `Telegram Smoke Test` | 只測 Telegram token / chat id 是否正確 | 手動 |
-| `V3 Daily Signal` | 收盤後跑 `main.py` 選股並推 Telegram | 每交易日台灣時間 14:30 / 手動 |
-| `Premarket Night Session` | 盤前跑 `premarket.py` 夜盤快報 | 每交易日台灣時間 08:00 / 手動 |
+| Workflow                  | 用途                               | 觸發                  |
+| ------------------------- | -------------------------------- | ------------------- |
+| `Telegram Smoke Test`     | 只測 Telegram token / chat id 是否正確 | 手動                  |
+| `V3 Daily Signal`         | 收盤後跑 `main.py` 選股並推 Telegram     | 每交易日台灣時間 14:30 / 手動 |
+| `Premarket Night Session` | 盤前跑 `premarket.py` 夜盤快報          | 每交易日台灣時間 08:00 / 手動 |
 
 先到 **Actions** → **Telegram Smoke Test** → **Run workflow**。如果 Telegram 收得到測試訊息，代表 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 正確。
 
@@ -404,13 +424,13 @@ uv run python main.py
 
 常見錯誤：
 
-| Actions 錯誤 | 通常原因 | 怎麼處理 |
-|---|---|---|
-| `Missing TELEGRAM_BOT_TOKEN` | secret 沒設或名稱拼錯 | 到 repo 的 Actions secrets 新增同名 secret |
-| `401 Unauthorized` | Telegram bot token 錯 | 回 @BotFather 重新複製 token |
-| `400 chat not found` | `TELEGRAM_CHAT_ID` 錯，或你還沒打開 bot | 先對你的 bot 按 `/start`，再重新查 chat id |
-| `讀取 watchlist 失敗` | Google Sheet secret 或分享權限錯 | 確認 `GOOGLE_CREDS_JSON` 是整串 JSON，且 service account email 已被加到 Sheet 編輯者 |
-| FinMind request/rate limit | `FINMIND_TOKEN` 錯或 API 額度暫時被打滿 | 確認 token，稍後重跑 workflow |
+| Actions 錯誤                   | 通常原因                            | 怎麼處理                                                                   |
+| ---------------------------- | ------------------------------- | ---------------------------------------------------------------------- |
+| `Missing TELEGRAM_BOT_TOKEN` | secret 沒設或名稱拼錯                  | 到 repo 的 Actions secrets 新增同名 secret                                   |
+| `401 Unauthorized`           | Telegram bot token 錯            | 回 @BotFather 重新複製 token                                                |
+| `400 chat not found`         | `TELEGRAM_CHAT_ID` 錯，或你還沒打開 bot | 先對你的 bot 按 `/start`，再重新查 chat id                                       |
+| `讀取 watchlist 失敗`            | Google Sheet secret 或分享權限錯      | 確認 `GOOGLE_CREDS_JSON` 是整串 JSON，且 service account email 已被加到 Sheet 編輯者 |
+| FinMind request/rate limit   | `FINMIND_TOKEN` 錯或 API 額度暫時被打滿  | 確認 token，稍後重跑 workflow                                                 |
 
 > GitHub Actions 免費額度：Private repo 每月 2000 分鐘，這個 workflow 每次約 2 分鐘，每月最多跑 22 天（交易日）= 44 分鐘，完全免費。
 
@@ -424,11 +444,11 @@ uv run python main.py
 綜合分 = 基本面 × 30% + 技術面 × 30% + 回測勝率 × 40%
 ```
 
-| 綜合分 | 動作 | 條件 |
-|--------|------|------|
-| ≥ 65 | 🟢 **BUY** | 基本面通過 + 技術分 ≥ 50 + 綜合分 ≥ 65 |
-| ≥ 50 | 🟡 **WATCH** | 接近但未全過 |
-| < 50 | ⚪ **SKIP** | 不符合 |
+| 綜合分  | 動作           | 條件                          |
+| ---- | ------------ | --------------------------- |
+| ≥ 65 | 🟢 **BUY**   | 基本面通過 + 技術分 ≥ 50 + 綜合分 ≥ 65 |
+| ≥ 50 | 🟡 **WATCH** | 接近但未全過                      |
+| < 50 | ⚪ **SKIP**   | 不符合                         |
 
 ### 基本面篩選
 
@@ -444,12 +464,12 @@ ROE > 15%   # 股東權益報酬率
 
 四大指標各 25 分：
 
-| 指標 | 滿分條件（25 分） | 部分得分 |
-|------|-------------------|----------|
-| **均線排列** | 收盤 > MA20 > MA60（多頭排列） | 收盤 > MA20（12 分） |
-| **布林通道** | 貼近下軌反彈（距下軌 < 3%） | 收盤在中軌下方（10 分） |
-| **KD 指標** | K > D 且 K < 80（黃金交叉未過熱） | K > D（10 分） |
-| **MACD** | 柱狀 > 0 且 DIF > DEA | 柱狀 > 0（10 分） |
+| 指標        | 滿分條件（25 分）              | 部分得分            |
+| --------- | ----------------------- | --------------- |
+| **均線排列**  | 收盤 > MA20 > MA60（多頭排列）  | 收盤 > MA20（12 分） |
+| **布林通道**  | 貼近下軌反彈（距下軌 < 3%）        | 收盤在中軌下方（10 分）   |
+| **KD 指標** | K > D 且 K < 80（黃金交叉未過熱） | K > D（10 分）     |
+| **MACD**  | 柱狀 > 0 且 DIF > DEA      | 柱狀 > 0（10 分）    |
 
 ### SEPA 趨勢模板與 VCP 附加診斷
 
@@ -463,11 +483,10 @@ ROE > 15%   # 股東權益報酬率
 
 這些診斷沿用 FinMind 資料，CLI 與 Web 批次選股每次共用一份 TAIEX 資料。綜合分權重、BUY／WATCH／SKIP 規則與既有回測訊號維持原設定；此功能尚未加入回測驗證的交易條件。
 
-規則來源：[telegram-bot-stock2 的 stock_analysis.py](https://github.com/tbdavid2019/telegram-bot-stock2/blob/master/tools/stock_analysis.py)（參考 blob `99a8ca08195ce71b94d61d830552a10f9460b867`）。此專案依規則獨立實作；來源提供的是 **VCP**，不是 VAP 成交量價位分布。
-
 ### 歷史回測
 
 對過去 3 年所有技術分 ≥ 60 的交易日，模擬：
+
 - 以**收盤價進場**
 - 持有 **20 個交易日**
 - **+10% 停利** / **-8% 停損** / 到期以收盤結算
@@ -549,6 +568,7 @@ WEIGHT_BACKTEST=0.3
 **週期股策略**
 
 預設策略適合成長股（台達電、上銀這類）。週期股（面板、記憶體、航運）建議：
+
 - 降低或跳過 EPS/ROE 門檻
 - 改看營收年增率
 - 加入產業景氣指標
@@ -652,6 +672,7 @@ Private repo 每月免費 2000 分鐘，這個 workflow 每次約 2 分鐘，每
 <summary><b>回測勝率可信嗎？</b></summary>
 
 看樣本數。系統會自動標註：
+
 - **< 8 次**：基本無統計意義
 - **8-15 次**：僅供參考
 - **> 20 次**：相對可信，但仍不保證未來表現

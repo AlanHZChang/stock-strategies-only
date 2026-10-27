@@ -9,6 +9,10 @@ def _isolate_cache(tmp_path, monkeypatch):
     cache_dir = tmp_path / "finmind_cache"
     monkeypatch.setenv("FINMIND_CACHE_DIR", str(cache_dir))
     monkeypatch.setenv("FINMIND_TOKEN", "test-token")
+    # 新籌碼來源預設離線；資料 loader 與摘要測試會另外提供自己的 mock。
+    from stock_strategies import chips
+    for name in ("get_institutional", "get_large_holders", "get_margin"):
+        monkeypatch.setattr(chips, name, lambda *args, **kwargs: pd.DataFrame())
     yield
 
 

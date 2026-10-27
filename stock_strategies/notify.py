@@ -468,6 +468,90 @@ def _format_volume_block(s: dict) -> list[str]:
     return lines
 
 
+def select_premarket_signals(signals: list[dict]) -> list[dict]:
+    """沿用最新一批有 BUY/WATCH 的日期，同日同股只留最新紀錄。"""
+    actionable = [signal for signal in signals if str(signal.get("action", "")).upper() in ("BUY", "WATCH")]
+    if not actionable:
+        return []
+    day, seen, selected = actionable[0].get("date", ""), set(), []
+    for signal in actionable:
+        stock_id = str(signal.get("stock_id", "")).strip()
+        if signal.get("date", "") != day or not stock_id or stock_id in seen:
+            continue
+        seen.add(stock_id)
+        selected.append(signal)
+    return sorted(selected, key=lambda signal: str(signal["action"]).upper() != "BUY")
+
+
+def _format_chip_detail(chips: dict | None) -> list[str]:
+    if not chips:
+        return ["  籌碼：尚無可用摘要"]
+
+    def amount(value, shares=False, signed=True):
+        if value is None:
+            return "N/A"
+        value = value / 1000 if shares else value
+        return f"{value:+,.2f}" if signed else f"{value:,.2f}"
+
+    def suffix(section):
+        result = "（沿用舊資料，更新受限）" if section.get("fallback") else ""
+        if section.get("warning"):
+            result += "（部分更新失敗）"
+        return result
+
+    lines = []
+    inst = chips.get("institutional", {})
+    if inst.get("status") in ("available", "partial"):
+        lines.append(f"  法人 {inst['date']}{suffix(inst)}（張）：外資 {amount(inst.get('foreign_net'), True)} / "
+                     f"投信 {amount(inst.get('trust_net'), True)} / 自營 {amount(inst.get('dealer_net'), True)} / "
+                     f"合計 {amount(inst.get('total_net'), True)}")
+        streak = inst.get("foreign_streak", {})
+        direction = streak.get("direction")
+        if direction in ("buy", "sell"):
+            label = "連買" if direction == "buy" else "連賣"
+            lines.append(f"  外資{'至少' if streak.get('at_least') else ''}{label} {streak.get('days', 0)} 個交易日")
+        else:
+            lines.append("  外資當日買賣平衡" if direction == "flat" else "  外資連買／連賣：資料不足")
+        five = inst.get("five_day", {})
+        if five.get("start_date"):
+            lines.append(f"  近5日法人（{five['start_date']}～{five['end_date']}，張）："
+                         f"外資 {amount(five['foreign_net'], True)} / 投信 {amount(five['trust_net'], True)} / "
+                         f"自營 {amount(five['dealer_net'], True)} / 合計 {amount(five['total_net'], True)}")
+        else:
+            lines.append(f"  近5日法人：資料不足（完整交易日 {five.get('days', 0)}/5）")
+    else:
+        lines.append(f"  法人：{inst.get('reason', '資料不足')}")
+
+    holders = chips.get("large_holders", {})
+    if holders.get("status") == "available":
+        line = f"  千張大戶 {holders['date']}{suffix(holders)}：{holders['percent']:.2f}%"
+        if holders.get("change_pp") is not None:
+            line += f" / 較上週 {holders['change_pp']:+.2f} 個百分點"
+            if holders.get("change_pct") is not None:
+                line += f"（增幅 {holders['change_pct']:+.2f}%，比較 {holders['previous_date']}）"
+            else:
+                line += "（前週為0%，相對增幅無法計算）"
+        else:
+            line += " / 上週資料不足"
+        lines.append(line)
+    else:
+        lines.append(f"  千張大戶：{holders.get('reason', '集保公開資料不足')}")
+
+    margin = chips.get("margin", {})
+    if margin.get("status") in ("available", "partial"):
+        lines.append(f"  資券 {margin['date']}{suffix(margin)}（張）："
+                     f"融資增減 {amount(margin.get('margin_change'))}（餘 {amount(margin.get('margin_balance'), signed=False)}） / "
+                     f"融券增減 {amount(margin.get('short_change'))}（餘 {amount(margin.get('short_balance'), signed=False)}）")
+    else:
+        lines.append(f"  融資融券：{margin.get('reason', '資料不足')}")
+    sources = {"TWSE": "證交所", "TPEX": "櫃買中心", "TDCC": "集保結算所"}
+    used = list(dict.fromkeys(sources[section["source"]] for section in (inst, holders, margin)
+                              if section.get("source") in sources))
+    if used:
+        lines.append(f"  籌碼來源：{'／'.join(used)}公開資料")
+    return lines
+
+
 def format_premarket(night: dict | None, signals: list[dict]) -> str:
     """夜盤盤前快報：夜盤方向預判 + 疊加昨日 BUY/WATCH 訊號。
 
@@ -497,23 +581,22 @@ def format_premarket(night: dict | None, signals: list[dict]) -> str:
     # === 疊加昨日訊號 ===
     bias = night["bias"] if night else "flat"
     tag = tailwind_tag(bias)
-    actionable = [
-        s for s in signals
-        if str(s.get("action", "")).upper() in ("BUY", "WATCH")
-    ]
+    actionable = select_premarket_signals(signals)
     if actionable:
         latest_day = actionable[0].get("date", "")  # 最新在最前
         batch = [s for s in actionable if s.get("date", "") == latest_day]
         buys = [s for s in batch if str(s["action"]).upper() == "BUY"]
         watches = [s for s in batch if str(s["action"]).upper() == "WATCH"]
         lines.append(f"📋 *昨日訊號 × 夜盤對照* ({latest_day})")
-        for s in (buys + watches)[:12]:
+        for s in buys + watches:
             act = str(s["action"]).upper()
             dot = "🟢" if act == "BUY" else "🟡"
             lines.append(
                 f"{dot} {act} {s.get('stock_id', '')} {s.get('name', '')} "
                 f"{s.get('signal_score', '')}分 · {tag}"
             )
+            lines.extend(_format_chip_detail(s.get("chips") or s.get("components", {}).get("chips")))
+            lines.append("")
         lines.append(f"↳ _{bias_guidance(bias)}_")
     else:
         lines.append("📋 昨日無 BUY/WATCH 訊號（或尚未跑過選股）")
@@ -521,6 +604,11 @@ def format_premarket(night: dict | None, signals: list[dict]) -> str:
 
     lines.append("💡 _夜盤僅領先參考，開盤後仍以實際量價為準_")
     return "\n".join(lines)
+
+
+def format_premarket_messages(night: dict | None, signals: list[dict]) -> list[str]:
+    """盤前籌碼可超過單則長度，沿用 UTF-16 安全分段。"""
+    return _split_telegram_message(format_premarket(night, signals))
 
 
 def format_message(signals: list[dict]) -> str:

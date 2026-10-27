@@ -173,7 +173,7 @@ def _api_to_df(payload: dict) -> pd.DataFrame:
     df = pd.DataFrame(payload.get("data", []))
     if not df.empty and "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+        df = df.dropna(subset=["date"]).sort_values("date", kind="stable").reset_index(drop=True)
     return df
 
 
@@ -230,5 +230,6 @@ def fetch_finmind_cached(
         df = df[df["date"] >= pd.to_datetime(start_date)]
         if end_date:
             df = df[df["date"] <= pd.to_datetime(end_date)]
-        df = df.sort_values("date").reset_index(drop=True)
+        # 保留同日舊資料在前、新增修訂在後，讓各 loader 的 keep='last' 可取最新公告。
+        df = df.sort_values("date", kind="stable").reset_index(drop=True)
     return df

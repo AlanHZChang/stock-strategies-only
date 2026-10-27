@@ -16,20 +16,25 @@ def _require_cols(df: pd.DataFrame, cols: list[str]) -> bool:
     return all(c in df.columns for c in cols)
 
 
-def get_institutional(stock_id: str, start: str, as_of: str | None = None) -> pd.DataFrame:
+def get_institutional(stock_id: str, start: str, as_of: str | None = None, *, force_refresh: bool = False) -> pd.DataFrame:
     """三大法人買賣超（日）。回欄位:
        date, foreign_net, trust_net, dealer_net, total_net（單位：股）。
     FinMind name 欄分桶：Foreign* → 外資、Investment_Trust → 投信、
     Dealer*（self+Hedging）→ 自營；net = buy - sell。"""
     try:
         df = fetch_finmind_cached(
-            "TaiwanStockInstitutionalInvestorsBuySell", stock_id, start, end_date=as_of
+            "TaiwanStockInstitutionalInvestorsBuySell", stock_id, start, end_date=as_of,
+            fresh_days=-1 if force_refresh else None, **({"max_retries": 0} if force_refresh else {}),
         )
     except FinMindRateLimitError:
         return pd.DataFrame()
     if df.empty or not _require_cols(df, ["date", "name", "buy", "sell"]):
         return pd.DataFrame()
     df = df.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"]).drop_duplicates(["date", "name"], keep="last")
+    if as_of:
+        df = df[df["date"] <= pd.Timestamp(as_of)]
     df["buy"] = pd.to_numeric(df["buy"], errors="coerce")
     df["sell"] = pd.to_numeric(df["sell"], errors="coerce")
     df["net"] = df["buy"] - df["sell"]
@@ -46,11 +51,13 @@ def get_institutional(stock_id: str, start: str, as_of: str | None = None) -> pd
 
     df["bucket"] = df["name"].map(bucket)
     df = df[df["bucket"] != "other"]
-    wide = df.pivot_table(index="date", columns="bucket", values="net",
-                          aggfunc="sum", fill_value=0).reset_index()
+    # 同日舊制 Dealer 合計與新制分項並存時，只取自行買賣／避險，避免重複加總。
+    split_dates = df.loc[df["name"].isin(["Dealer_self", "Dealer_Hedging"]), "date"]
+    df = df[~((df["name"] == "Dealer") & df["date"].isin(split_dates))]
+    wide = df.groupby(["date", "bucket"])["net"].agg(lambda values: values.sum(min_count=len(values))).unstack().reset_index()
     for col in ["foreign_net", "trust_net", "dealer_net"]:
         if col not in wide.columns:
-            wide[col] = 0
+            wide[col] = float("nan")
     wide["total_net"] = wide["foreign_net"] + wide["trust_net"] + wide["dealer_net"]
     return wide[["date", "foreign_net", "trust_net", "dealer_net", "total_net"]].sort_values("date").reset_index(drop=True)
 
@@ -117,31 +124,46 @@ def get_valuation(stock_id: str, start: str, as_of: str | None = None) -> pd.Dat
     return df[keep].sort_values("date").reset_index(drop=True)
 
 
-def get_margin(stock_id: str, start: str, as_of: str | None = None) -> pd.DataFrame:
+def get_margin(stock_id: str, start: str, as_of: str | None = None, *, force_refresh: bool = False) -> pd.DataFrame:
     """融資融券（日）。回 date, margin_balance, short_balance,
        margin_chg, short_chg, short_margin_ratio(券資比)。"""
     try:
         df = fetch_finmind_cached(
-            "TaiwanStockMarginPurchaseShortSale", stock_id, start, end_date=as_of
+            "TaiwanStockMarginPurchaseShortSale", stock_id, start, end_date=as_of,
+            fresh_days=-1 if force_refresh else None, **({"max_retries": 0} if force_refresh else {}),
         )
     except FinMindRateLimitError:
         return pd.DataFrame()
     rename = {
         "MarginPurchaseTodayBalance": "margin_balance",
         "ShortSaleTodayBalance": "short_balance",
+        "MarginPurchaseYesterdayBalance": "margin_yesterday",
+        "ShortSaleYesterdayBalance": "short_yesterday",
     }
     df = df.rename(columns=rename)
     if df.empty or not _require_cols(df, ["date", "margin_balance", "short_balance"]):
         return pd.DataFrame()
     df = df.copy()
-    for c in ["margin_balance", "short_balance"]:
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"]).drop_duplicates("date", keep="last")
+    if as_of:
+        df = df[df["date"] <= pd.Timestamp(as_of)]
+    for c in ["margin_balance", "short_balance", "margin_yesterday", "short_yesterday"]:
+        if c not in df:
+            continue
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.sort_values("date").reset_index(drop=True)
     df["margin_chg"] = df["margin_balance"].diff()
     df["short_chg"] = df["short_balance"].diff()
+    # 公告的昨日餘額可避免資料缺日、除權等情況被當成前一筆資料比較。
+    for balance, previous, change in (("margin_balance", "margin_yesterday", "margin_chg"),
+                                      ("short_balance", "short_yesterday", "short_chg")):
+        if previous in df:
+            df[change] = df[balance] - df[previous]
     df["short_margin_ratio"] = df["short_balance"] / df["margin_balance"].replace(0, pd.NA)
-    return df[["date", "margin_balance", "short_balance",
-               "margin_chg", "short_chg", "short_margin_ratio"]].reset_index(drop=True)
+    columns = ["date", "margin_balance", "short_balance", "margin_chg", "short_chg", "short_margin_ratio"]
+    columns += [column for column in ("margin_yesterday", "short_yesterday") if column in df]
+    return df[columns].reset_index(drop=True)
 
 
 def get_shareholding(stock_id: str, start: str, as_of: str | None = None) -> pd.DataFrame:
