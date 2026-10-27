@@ -36,6 +36,7 @@ from stock_strategies.night_session import (
     night_filter_note,
 )
 from stock_strategies.performance import update_performance, summary as perf_summary
+from stock_strategies.sepa import load_sepa_benchmark
 
 
 REQUIRED_ENV = [
@@ -70,12 +71,13 @@ def main():
     print(f"  → {night_note}")
 
     # 3. 個股評分
+    sepa_benchmark = load_sepa_benchmark() if watchlist else None
     results = []
     for i, row in enumerate(watchlist, 1):
         sid = str(row["stock_id"])
         name = row.get("name", "")
         print(f"[{i}/{len(watchlist)}] {sid} {name}")
-        r = evaluate(sid, name)
+        r = evaluate(sid, name, benchmark=sepa_benchmark)
         if r:
             results.append(r)
         time.sleep(0.6)

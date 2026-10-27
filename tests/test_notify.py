@@ -66,3 +66,54 @@ def test_default_and_compatibility_entrypoints_use_current_defaults():
     assert f"{params['backtest_years']}年回測" in messages[0]
     assert f"BUY≥{params['min_total_score_for_buy']:g}" in messages[0]
     assert format_message([]) == messages[0]
+
+
+def test_sepa_and_vcp_details_are_present_in_overview_and_stock_messages():
+    from stock_strategies.sepa import analyze_sepa
+    from tests.test_sepa import prices, benchmark
+    stock = _watch()
+    stock["components"]["sepa"] = analyze_sepa(prices(), benchmark())
+    messages = format_messages([stock])
+    assert "SEPA / VCP 附加診斷" in messages[0]
+    assert "模板全過 1 檔" in messages[0]
+    assert "VCP收斂 1 檔" in messages[0]
+    details = "\n".join(messages[1:])
+    assert "SEPA 8/8 | Stage 2 候選" in details
+    assert "VCP：收斂成立" in details
+    assert "振幅比5/10/20日" in details
+    assert "均量10/50日" in details
+    assert "TAIEX" in details
+    assert "樞紐 150 / 7%防守 139.5" in details
+    assert "2ATR防守" in details
+
+
+def test_notify_explains_missing_sepa_and_vcp_data():
+    from stock_strategies.sepa import analyze_sepa
+    from tests.test_sepa import prices
+    stock = _watch()
+    stock["components"]["sepa"] = analyze_sepa(prices(100).drop(columns="volume"))
+    details = "\n".join(format_messages([stock]))
+    assert "缺資料" in details
+    assert "待確認：" in details
+    assert "VCP：資料不足" in details
+    assert "None" not in details
+    assert "nan" not in details
+
+
+def test_large_sepa_reports_are_split_within_telegram_utf16_limit():
+    from stock_strategies.sepa import analyze_sepa
+    from tests.test_sepa import prices, benchmark
+    report = analyze_sepa(prices(), benchmark())
+    stocks = []
+    for index in range(30):
+        stock = _watch()
+        stock["stock_id"] = f"test{index:02d}"
+        stock["action"] = "BUY"
+        stock["components"]["sepa"] = report
+        stocks.append(stock)
+    messages = format_messages(stocks)
+    assert len(messages) > 4
+    assert all(len(message.encode("utf-16-le")) // 2 <= 4000 for message in messages)
+    assert all(message.count("*") % 2 == 0 for message in messages)
+    combined = "\n".join(messages)
+    assert all(stock["stock_id"] in combined for stock in stocks)

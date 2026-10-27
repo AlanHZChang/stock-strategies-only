@@ -69,9 +69,70 @@ def _format_stock_detail(s: dict, show_trend: bool = True, params: dict | None =
     )
     if c.get("tech_signals"):
         lines.append(f"觸發: {', '.join(c['tech_signals'])}")
+    lines.extend(_format_sepa_detail(c.get("sepa")))
     if s.get("risk_notes"):
         lines.append(f"⚠️ {' / '.join(s['risk_notes'])}")
     return lines
+
+
+def _format_sepa_detail(sepa: dict | None) -> list[str]:
+    if not sepa:
+        return []
+    missing = sepa.get("unavailable_conditions", [])
+    lines = [f"📐 SEPA {sepa['template_score']} | {sepa['stage']}"
+             + (f"（缺資料 {len(missing)} 項）" if missing else "")]
+    if sepa.get("failed_conditions"):
+        lines.append("未通過：" + " / ".join(sepa["failed_conditions"]))
+    if missing:
+        lines.append("待確認：" + " / ".join(missing))
+    metrics = sepa.get("metrics", {})
+    stock_return, market_return = metrics.get("relative_3m_return"), metrics.get("benchmark_3m_return")
+    if stock_return is not None and market_return is not None:
+        lines.append(f"近3月報酬：個股 {stock_return:+g}% / TAIEX {market_return:+g}%")
+    else:
+        lines.append("相對強弱：缺少 TAIEX 或共同交易日資料")
+    vcp = sepa.get("vcp", {})
+    detected = vcp.get("detected")
+    if detected is None:
+        lines.append("🌀 VCP：資料不足，無法確認收斂")
+    else:
+        ratios = vcp["range_contraction_ratios"]
+        ranges = "/".join(f"{ratios[str(window)]:g}" for window in (5, 10, 20))
+        lines.append(f"🌀 VCP：{'收斂成立' if detected else '未確認收斂'} | "
+                     f"振幅比5/10/20日 {ranges} | 均量10/50日 {vcp['volume_10d_vs_50d']:g}x")
+    pivot = sepa.get("pivot_entry")
+    if pivot is not None:
+        stops = sepa["risk_stops"]
+        line = f"SEPA參考：樞紐 {pivot:g} / 7%防守 {stops['7_percent_stop']:g}"
+        if stops.get("2_atr_stop") is not None:
+            line += f" / 2ATR防守 {stops['2_atr_stop']:g}"
+        lines.append(line)
+    return lines
+
+
+def _split_telegram_message(text: str, limit: int = 4000) -> list[str]:
+    """新增診斷後依行分段；UTF-16 計數為 emoji 保留 Telegram 長度空間。"""
+    chunks, current = [], ""
+    for line in text.split("\n"):
+        # 一般通知每行遠小於上限；長股票清單亦可分段。
+        parts = []
+        while len(line.encode("utf-16-le")) // 2 > limit:
+            end = limit
+            while len(line[:end].encode("utf-16-le")) // 2 > limit:
+                end -= 1
+            parts.append(line[:end])
+            line = line[end:]
+        parts.append(line)
+        for part in parts:
+            combined = current + "\n" + part if current else part
+            if len(combined.encode("utf-16-le")) // 2 > limit:
+                chunks.append(current)
+                current = part
+            else:
+                current = combined
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def _explain_why(s: dict, params: dict | None = None) -> str:
@@ -222,6 +283,18 @@ def format_messages(
 
     msg1.append("📋 *策略規則*")
     msg1.append(_format_strategy_rules(params))
+    reports = [s.get("components", {}).get("sepa") for s in signals]
+    reports = [report for report in reports if report]
+    if reports:
+        msg1.append("")
+        msg1.append("📐 *SEPA / VCP 附加診斷*")
+        msg1.append(
+            f"模板全過 {sum(report['template_passed'] for report in reports)} 檔 | "
+            f"Stage 2候選 {sum(report['stage2_candidate'] for report in reports)} 檔 | "
+            f"VCP收斂 {sum(report['vcp']['detected'] is True for report in reports)} 檔"
+        )
+        msg1.append(f"未完整判定 {sum(report['status'] != 'available' for report in reports)} 檔；"
+                    "參考樞紐與防守價另列，綜合分與進出場仍依上列策略規則。")
     messages.append("\n".join(msg1))
 
     # === 第二則：BUY 詳細 ===
@@ -313,7 +386,7 @@ def format_messages(
     msg4 = _format_deep_analysis(signals, today)
     messages.append(msg4)
 
-    return messages
+    return [chunk for message in messages for chunk in _split_telegram_message(message)]
 
 
 def _format_deep_analysis(signals: list[dict], today: str) -> str:

@@ -9,9 +9,10 @@ from .indicators import add_indicators, tech_score_at
 from .backtest import backtest
 from .volume import detect_patterns, verdict as volume_verdict
 from .loader import merge_params
+from .sepa import analyze_sepa, load_sepa_benchmark
 
 
-def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional[dict]:
+def evaluate(stock_id: str, name: str, strategy: dict | None = None, *, benchmark: pd.DataFrame | None = None) -> Optional[dict]:
     """評估一檔股票。strategy 為策略 dict（含 params），不給就用預設值。"""
     params = merge_params(strategy)
 
@@ -36,6 +37,10 @@ def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional
         )
 
         px = get_price_history(stock_id, params["backtest_years"])
+        if benchmark is None and len(px) >= 220:
+            benchmark = load_sepa_benchmark()
+        sepa = analyze_sepa(px, benchmark)
+        result["components"] = {"sepa": sepa}
         if len(px) < 100:
             result["action"] = "SKIP"
             result["risk_notes"].append("價格資料不足")
@@ -114,6 +119,7 @@ def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional
             "action": action,
             "signal_score": signal_score,
             "components": {
+                "sepa": sepa,
                 "fundamental_pass": fund_pass,
                 "eps_min": min(eps_vals) if eps_vals else None,
                 "roe_min": min(roe_vals) if roe_vals else None,

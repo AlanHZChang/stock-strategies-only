@@ -1,5 +1,6 @@
 import threading
 
+import pandas as pd
 import pytest
 
 from api.services import runs
@@ -7,9 +8,10 @@ from api.services import runs
 
 @pytest.fixture
 def services(monkeypatch):
+    monkeypatch.setattr(runs, "load_sepa_benchmark", lambda: pd.DataFrame())
     monkeypatch.setattr(runs, "read_watchlist", lambda: [{"stock_id": "1", "name": "one"}, {"stock_id": "2"}])
     monkeypatch.setattr(runs, "get_market_state", lambda _: {"bullish": False, "note": "bear"})
-    monkeypatch.setattr(runs, "evaluate", lambda sid, name, strategy: {
+    monkeypatch.setattr(runs, "evaluate", lambda sid, name, strategy, benchmark=None: {
         "stock_id": sid, "name": name, "action": "BUY", "signal_score": 70, "risk_notes": [],
     })
     return {"id": "test", "name": "test", "params": {}}
@@ -129,3 +131,29 @@ def test_synchronous_run_returns_same_result(services):
         assert store.run_sync(services) == {"ok": True}
     finally:
         store.shutdown()
+
+
+def test_screening_loads_one_shared_sepa_benchmark(services, monkeypatch):
+    shared = pd.DataFrame({"date": ["2024-01-01"], "close": [100]})
+    calls, seen = [], []
+    def load_benchmark():
+        calls.append(True)
+        return shared
+    def evaluate(sid, name, strategy, benchmark):
+        seen.append(benchmark)
+        return {"stock_id": sid, "action": "SKIP"}
+    monkeypatch.setattr(runs, "load_sepa_benchmark", load_benchmark)
+    monkeypatch.setattr(runs, "evaluate", evaluate)
+    result = runs.screen(services, delay=0)
+    assert len(calls) == 1
+    assert len(seen) == 2 and all(value is shared for value in seen)
+    assert result["summary"]["total"] == 2
+
+
+def test_cancelled_screening_does_not_load_sepa_benchmark(services, monkeypatch):
+    cancel = threading.Event()
+    cancel.set()
+    def unexpected_load():
+        pytest.fail("cancelled screening must not load benchmark")
+    monkeypatch.setattr(runs, "load_sepa_benchmark", unexpected_load)
+    assert runs.screen(services, cancel=cancel, delay=0)["summary"]["total"] == 0

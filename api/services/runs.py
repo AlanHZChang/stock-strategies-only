@@ -10,6 +10,7 @@ import uuid
 from stock_strategies.evaluate import evaluate
 from stock_strategies.market import apply_market_filter, get_market_state
 from stock_strategies.sheet import read_watchlist
+from stock_strategies.sepa import load_sepa_benchmark
 
 
 def screen(strategy, limit=None, *, progress=None, cancel=None, delay=0.4):
@@ -29,6 +30,7 @@ def screen(strategy, limit=None, *, progress=None, cancel=None, delay=0.4):
     if market_enabled and not cancel.is_set():
         market = get_market_state(int(params.get("market_filter_ma_period", 20)))
 
+    benchmark = load_sepa_benchmark() if rows and not cancel.is_set() else None
     results = []
     for index, row in enumerate(rows):
         if cancel.is_set():
@@ -36,7 +38,7 @@ def screen(strategy, limit=None, *, progress=None, cancel=None, delay=0.4):
         sid, name = str(row["stock_id"]), row.get("name", "")
         report(completed=index, total=total, current=sid)
         try:
-            result = evaluate(sid, name, strategy=strategy)
+            result = evaluate(sid, name, strategy=strategy, benchmark=benchmark)
             if result is None:
                 raise ValueError("未回傳評估結果")
         except Exception as exc:

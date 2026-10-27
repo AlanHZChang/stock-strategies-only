@@ -9,6 +9,9 @@ from api.services.runs import RunManager
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    import pandas as pd
+    from api.services import runs
+    monkeypatch.setattr(runs, "load_sepa_benchmark", lambda: pd.DataFrame())
     monkeypatch.setattr(loader, "STRATEGY_DIR", tmp_path)
     return TestClient(app)
 
